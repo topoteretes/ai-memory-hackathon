@@ -264,6 +264,32 @@ async def index():
     let allAnomalies = [];
     let activeFilter = 'all';
 
+    function parseText(raw) {
+        if (!raw) return null;
+        try { return JSON.parse(raw.replace(/'/g, '"')); } catch(e) {
+            try { return JSON.parse(raw); } catch(e2) { return null; }
+        }
+    }
+
+    function formatAnomalyData(d) {
+        if (!d) return '';
+        if (d.invoice_number || d.transaction_id) {
+            const id = d.invoice_number || d.transaction_id;
+            const amt = d.total || d.amount || 0;
+            let items = '';
+            if (d.items) {
+                let arr = d.items;
+                if (typeof arr === 'string') { try { arr = JSON.parse(arr.replace(/'/g, '"')); } catch(e) { arr = []; } }
+                if (Array.isArray(arr)) { items = arr.map(i => `${i.product} x${i.qty}`).join(', '); }
+            }
+            return `<strong>${id}</strong> | $${Number(amt).toLocaleString()} | ${d.date||''} | Vendor ${d.vendor_id||'?'}${items ? '<br>'+items : ''}`;
+        }
+        if (d.vendor_id && d.count) {
+            return `<strong>Vendor ${d.vendor_id}</strong> | ${d.count} invoices | $${Number(d.spend).toLocaleString()} total`;
+        }
+        return JSON.stringify(d).slice(0,150);
+    }
+
     function render(list) {
         const filtered = activeFilter === 'all' ? list : list.filter(a => a.type === activeFilter);
         document.getElementById('anomalies').innerHTML = filtered.map(a => `
@@ -273,7 +299,7 @@ async def index():
                     <span style="color:#666;font-size:0.8rem">${a.id}</span>
                 </div>
                 <div class="detail">${a.detail}</div>
-                <div class="data">${JSON.stringify(a.data).slice(0,200)}</div>
+                <div class="data">${formatAnomalyData(a.data)}</div>
                 <div class="actions">
                     <button onclick="investigate('${a.id}')">Investigate (find similar)</button>
                 </div>
@@ -290,7 +316,7 @@ async def index():
             `<p style="color:#888;margin-bottom:1rem">${data.results.length} results in ${data.time_ms}ms</p>` +
             data.results.map(r => `<div class="anomaly medium">
                 <div class="header"><span class="tag type">search result</span> <span style="color:#ef4444">${r.score.toFixed(4)}</span></div>
-                <div class="detail">${(r.text || '').slice(0,300)}</div>
+                <div class="data">${formatAnomalyData(parseText(r.text))}</div>
                 <div class="actions"><button onclick="investigate('${r.id}')">Find similar</button></div>
             </div>`).join('');
     }
@@ -305,7 +331,7 @@ async def index():
         el.innerHTML = `<h3 style="color:#ef4444;margin-bottom:0.5rem">Investigation: ${pointId}</h3>
             <p style="color:#888;margin-bottom:0.5rem">${data.similar.length} similar records found in ${data.time_ms}ms</p>` +
             data.similar.map(s => `<div style="padding:0.5rem;border-bottom:1px solid #222">
-                <span style="color:#ef4444">${s.score.toFixed(4)}</span> ${JSON.stringify(s.payload?.text || s.payload).slice(0,200)}
+                <span style="color:#ef4444">${s.score.toFixed(4)}</span> ${formatAnomalyData(parseText(s.payload?.text) || s.payload)}
             </div>`).join('');
     }
 

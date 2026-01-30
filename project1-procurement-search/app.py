@@ -144,6 +144,15 @@ async def index():
         .result .actions button:hover { background: #7c3aed; }
         .stats { color: #888; margin-bottom: 1rem; font-size: 0.9rem; }
         .group-header { color: #f59e0b; font-size: 1.1rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #333; padding-bottom: 0.25rem; }
+        .record-card { }
+        .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+        .record-id { color: #a5b4fc; font-family: monospace; font-size: 0.9rem; }
+        .record-amount { color: #f59e0b; font-size: 1.2rem; font-weight: bold; }
+        .record-fields { display: flex; gap: 1rem; margin-bottom: 0.5rem; }
+        .field-val { color: #888; font-size: 0.85rem; }
+        .items { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+        .item-chip { background: #262626; border: 1px solid #444; border-radius: 6px; padding: 0.2rem 0.6rem; font-size: 0.8rem; color: #ccc; }
+        .record-text { color: #ccc; font-size: 0.9rem; }
     </style></head><body>
     <h1>Procurement Search <span class="badge local">Local LLM</span> <span class="badge qdrant">Qdrant Cloud</span></h1>
     <p class="subtitle">Semantic search with nomic-embed-text (local) + Qdrant Discovery API, Grouping, MMR</p>
@@ -196,13 +205,57 @@ async def index():
         }
     }
 
+    function parseText(raw) {
+        if (!raw) return null;
+        try { return JSON.parse(raw.replace(/'/g, '"')); } catch(e) {
+            try { return JSON.parse(raw); } catch(e2) { return null; }
+        }
+    }
+
+    function formatRecord(raw) {
+        const d = typeof raw === 'object' ? raw : parseText(raw);
+        if (!d) return `<div class="record-text">${String(raw).slice(0,300)}</div>`;
+
+        if (d.invoice_number || d.transaction_id) {
+            const id = d.invoice_number || d.transaction_id;
+            const amt = d.total || d.amount || 0;
+            const date = d.date || '';
+            const vendor = d.vendor_id ? `Vendor ${d.vendor_id}` : '';
+            const discount = d.discount ? `<span class="field-val" style="color:#22c55e">Discount: $${Number(d.discount).toLocaleString()}</span>` : '';
+            let itemsHtml = '';
+            if (d.items) {
+                let items = d.items;
+                if (typeof items === 'string') { try { items = JSON.parse(items.replace(/'/g, '"')); } catch(e) { items = []; } }
+                if (Array.isArray(items)) {
+                    itemsHtml = '<div class="items">' + items.map(i =>
+                        `<span class="item-chip">${i.product} x${i.qty} ($${Number(i.total).toLocaleString()})</span>`
+                    ).join('') + '</div>';
+                }
+            }
+            return `<div class="record-card">
+                <div class="record-header">
+                    <span class="record-id">${id}</span>
+                    <span class="record-amount">$${Number(amt).toLocaleString()}</span>
+                </div>
+                <div class="record-fields">
+                    <span class="field-val">${date}</span>
+                    <span class="field-val">${vendor}</span>
+                    ${discount}
+                </div>
+                ${itemsHtml}
+            </div>`;
+        }
+        // Entity or other
+        return `<div class="record-text">${String(d.text || d.name || JSON.stringify(d)).slice(0,200)}</div>`;
+    }
+
     function renderResult(r) {
         return `<div class="result">
             <div class="meta">
-                <span class="score">Score: ${r.score.toFixed(4)}</span>
+                <span class="score">${r.score.toFixed(4)}</span>
                 <span class="type">${r.type || ''}</span>
             </div>
-            <div class="text">${(r.text || JSON.stringify(r.payload || {})).slice(0, 400)}</div>
+            ${formatRecord(r.text)}
             <div class="actions">
                 <button onclick="discover('${r.id}', true)">More like this</button>
                 <button onclick="discover('${r.id}', false)">Less like this</button>

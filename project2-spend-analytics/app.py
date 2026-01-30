@@ -141,9 +141,11 @@ async def lifespan(app: FastAPI):
                 pass
 
     print("Loading data from Qdrant...")
-    invoices = load_all_records("DocumentChunk_text")
-    transactions = load_all_records("TextDocument_name")
-    print(f"Loaded {len(invoices)} invoices, {len(transactions)} transactions")
+    all_records = load_all_records("DocumentChunk_text")
+    # Split into invoices (have invoice_number) and transactions (have transaction_id)
+    invoices = [r for r in all_records if "invoice_number" in r]
+    transactions = [r for r in all_records if "transaction_id" in r]
+    print(f"Loaded {len(invoices)} invoices, {len(transactions)} transactions from DocumentChunk_text")
     analytics_cache["data"] = compute_analytics(invoices, transactions)
     yield
 
@@ -179,6 +181,13 @@ async def dashboard():
         .search-results { margin-top: 1.5rem; }
         .search-result { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem; }
         .search-result .score { color: #f59e0b; font-weight: bold; }
+        .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
+        .record-id { color: #a5b4fc; font-family: monospace; font-size: 0.85rem; }
+        .record-amount { color: #f59e0b; font-size: 1.1rem; font-weight: bold; }
+        .record-fields { display: flex; gap: 1rem; margin-bottom: 0.4rem; }
+        .field-val { color: #888; font-size: 0.85rem; }
+        .items { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+        .item-chip { background: #262626; border: 1px solid #444; border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #ccc; }
     </style></head><body>
     <h1>Spend Analytics <span class="badge local">Local Embeddings</span> <span class="badge qdrant">Qdrant Cloud</span></h1>
     <p class="subtitle">Semantic invoice search + analytics | nomic-embed-text + Qdrant payload indexing & grouping</p>
@@ -202,6 +211,34 @@ async def dashboard():
         <div class="chart-card"><h3>Top Products (Revenue)</h3><canvas id="prChart"></canvas></div>
     </div>
     <script>
+    function parseText(raw) {
+        if (!raw) return null;
+        try { return JSON.parse(raw.replace(/'/g, '"')); } catch(e) {
+            try { return JSON.parse(raw); } catch(e2) { return null; }
+        }
+    }
+    function formatRecord(raw) {
+        const d = typeof raw === 'object' ? raw : parseText(raw);
+        if (!d) return `<span style="color:#ccc">${String(raw).slice(0,200)}</span>`;
+        if (d.invoice_number || d.transaction_id) {
+            const id = d.invoice_number || d.transaction_id;
+            const amt = d.total || d.amount || 0;
+            let itemsHtml = '';
+            if (d.items) {
+                let items = d.items;
+                if (typeof items === 'string') { try { items = JSON.parse(items.replace(/'/g, '"')); } catch(e) { items = []; } }
+                if (Array.isArray(items)) {
+                    itemsHtml = '<div class="items">' + items.map(i =>
+                        `<span class="item-chip">${i.product} x${i.qty}</span>`
+                    ).join('') + '</div>';
+                }
+            }
+            return `<div class="record-header"><span class="record-id">${id}</span><span class="record-amount">$${Number(amt).toLocaleString()}</span></div>
+                <div class="record-fields"><span class="field-val">${d.date||''}</span><span class="field-val">Vendor ${d.vendor_id||'?'}</span></div>${itemsHtml}`;
+        }
+        return `<span style="color:#ccc">${String(d.text || JSON.stringify(d)).slice(0,200)}</span>`;
+    }
+
     async function semanticSearch() {
         const q = document.getElementById('q').value;
         if (!q) return;
@@ -210,7 +247,7 @@ async def dashboard():
         const data = await res.json();
         document.getElementById('search-results').innerHTML =
             `<p style="color:#888">${data.results.length} results in ${data.time_ms}ms (embed: ${data.embed_ms}ms)</p>` +
-            data.results.map(r => `<div class="search-result"><span class="score">${r.score.toFixed(4)}</span> ${(r.text || JSON.stringify(r.payload)).slice(0, 300)}</div>`).join('');
+            data.results.map(r => `<div class="search-result"><span class="score">${r.score.toFixed(4)}</span>${formatRecord(r.text)}</div>`).join('');
     }
     document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') semanticSearch(); });
 
