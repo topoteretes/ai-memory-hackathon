@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from llama_cpp import Llama
+from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -50,6 +51,13 @@ qdrant = QdrantClient(
     url=os.environ["QDRANT_URL"],
     api_key=os.environ["QDRANT_API_KEY"],
 )
+
+# LLM client — works with OpenRouter (free), Groq, Ollama, or any OpenAI-compatible API
+llm_client = OpenAI(
+    base_url=os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
+    api_key=os.environ.get("LLM_API_KEY", ""),
+)
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen/qwen3-4b:free")
 
 embed_model = None
 
@@ -171,6 +179,7 @@ async def index():
             <option value="TextDocument_name">Documents</option>
         </select>
         <button onclick="doSearch()">Search</button>
+        <button onclick="askQuestion()" style="background:#22c55e">Ask (RAG)</button>
     </div>
     <div class="controls">
         <label><input type="checkbox" id="useFusion" checked /> Prefetch + RRF Fusion</label>
@@ -286,6 +295,17 @@ async def index():
         document.getElementById('stats').textContent = `${method}: ${data.results.length} results in ${data.time_ms}ms` +
             (positiveCtx ? ` | +${positiveCtx.slice(0,8)}` : '') + (negativeCtx ? ` | -${negativeCtx.slice(0,8)}` : '');
         document.getElementById('results').innerHTML = data.results.map(renderResult).join('');
+    }
+
+    async function askQuestion() {
+        const q = document.getElementById('q').value;
+        if (!q) return;
+        const c = document.getElementById('collection').value;
+        document.getElementById('results').innerHTML = '<p style="color:#888">Retrieving context via Qdrant Prefetch+Fusion, then asking LLM...</p>';
+        const res = await fetch(`/ask?q=${encodeURIComponent(q)}&collection=${c}`);
+        const data = await res.json();
+        document.getElementById('stats').textContent = `RAG: ${data.sources} sources | Retrieval: ${data.retrieval_ms}ms | LLM: ${data.llm_ms}ms | Model: ${data.model}`;
+        document.getElementById('results').innerHTML = `<div class="result" style="border-color:#22c55e"><div style="color:#22c55e;font-weight:bold;margin-bottom:0.5rem">Answer</div><div class="text" style="white-space:pre-wrap">${data.answer}</div></div>`;
     }
 
     document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
@@ -567,6 +587,62 @@ async def filtered_search(
             "type": payload.get("type", ""),
         })
     return {"results": items, "time_ms": round((time.time() - t0) * 1000, 1)}
+
+
+@app.get("/ask")
+async def ask(q: str = Query(...), collection: str = Query("DocumentChunk_text"), limit: int = Query(5)):
+    """
+    RAG Q&A: retrieve relevant docs via Qdrant Prefetch+Fusion, then reason with LLM.
+    Uses OpenRouter (free Qwen3-4B), Groq, or any OpenAI-compatible endpoint.
+    """
+    t0 = time.time()
+    query_vector = get_embedding(q)
+
+    # Retrieve context via Prefetch + RRF Fusion
+    results = qdrant.query_points(
+        collection_name=collection,
+        prefetch=[
+            Prefetch(query=query_vector, limit=50),
+            Prefetch(query=query_vector, limit=20),
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        limit=limit,
+        with_payload=True,
+    )
+
+    context_docs = []
+    for p in results.points:
+        text = (p.payload or {}).get("text", "")
+        context_docs.append(text[:500])
+
+    context = "\n---\n".join(context_docs)
+    retrieval_ms = round((time.time() - t0) * 1000, 1)
+
+    # LLM reasoning
+    t1 = time.time()
+    try:
+        response = llm_client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a procurement analyst. Answer questions using the provided context from invoices, transactions, and vendor data. Be specific with numbers and dates."},
+                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {q}"},
+            ],
+            max_tokens=512,
+            temperature=0.3,
+        )
+        answer = response.choices[0].message.content
+    except Exception as e:
+        answer = f"LLM error: {e}. Set LLM_BASE_URL, LLM_API_KEY, LLM_MODEL in .env"
+    llm_ms = round((time.time() - t1) * 1000, 1)
+
+    return {
+        "question": q,
+        "answer": answer,
+        "sources": len(context_docs),
+        "retrieval_ms": retrieval_ms,
+        "llm_ms": llm_ms,
+        "model": LLM_MODEL,
+    }
 
 
 @app.get("/collections")

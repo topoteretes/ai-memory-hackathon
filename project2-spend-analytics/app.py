@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from llama_cpp import Llama
+from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     PayloadSchemaType,
@@ -35,6 +36,12 @@ EMBED_MODEL_PATH = os.path.join(
 )
 
 qdrant = QdrantClient(url=os.environ["QDRANT_URL"], api_key=os.environ["QDRANT_API_KEY"])
+
+llm_client = OpenAI(
+    base_url=os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
+    api_key=os.environ.get("LLM_API_KEY", ""),
+)
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen/qwen3-4b:free")
 embed_model = None
 analytics_cache = {}
 
@@ -335,6 +342,38 @@ async def grouped_vendor_search(q: str = Query(...), limit: int = Query(20)):
     for g in groups.groups:
         result[str(g.id)] = [{"id": str(h.id), "score": h.score, "payload": h.payload} for h in g.hits]
     return {"groups": result}
+
+
+@app.get("/api/insights")
+async def generate_insights(q: str = Query("Summarize spending patterns and flag concerns")):
+    """
+    LLM-powered spend insights: feed analytics summary to LLM for natural language analysis.
+    """
+    data = analytics_cache.get("data", {})
+    summary = json.dumps({
+        "total_spend": data.get("total_spend"),
+        "total_invoices": data.get("total_invoices"),
+        "total_transactions": data.get("total_transactions"),
+        "top_vendors": dict(list(data.get("vendor_spend", {}).items())[:5]),
+        "top_products_revenue": dict(list(data.get("top_products_revenue", {}).items())[:10]),
+        "monthly_spend": data.get("monthly_spend", {}),
+    }, indent=2, default=str)
+
+    try:
+        response = llm_client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a spend analytics expert. Analyze the procurement data and provide actionable insights. Be specific with numbers."},
+                {"role": "user", "content": f"Procurement data:\n{summary}\n\nAnalysis request: {q}"},
+            ],
+            max_tokens=512,
+            temperature=0.3,
+        )
+        insights = response.choices[0].message.content
+    except Exception as e:
+        insights = f"LLM error: {e}. Set LLM_BASE_URL, LLM_API_KEY, LLM_MODEL in .env"
+
+    return {"question": q, "insights": insights, "model": LLM_MODEL}
 
 
 if __name__ == "__main__":
