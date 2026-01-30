@@ -116,33 +116,50 @@ def detect_vector_outliers(records, z_threshold=2.0):
 
 
 def detect_duplicates_via_recommend(records):
-    """Use Qdrant Recommend API to find near-duplicate vectors."""
+    """Use Qdrant Batch Query API to find near-duplicate vectors efficiently."""
+    from qdrant_client.models import QueryRequest
+
     duplicates = []
     seen = set()
-    for i, r in enumerate(records[:100]):  # Limit to 100 for Qdrant Cloud timeouts
-        try:
-            results = qdrant.query_points(
-                collection_name="DocumentChunk_text",
+    batch_size = 50
+    scan_records = records[:200]
+
+    for batch_start in range(0, len(scan_records), batch_size):
+        batch = scan_records[batch_start : batch_start + batch_size]
+        requests = [
+            QueryRequest(
                 query=r["id"],
                 limit=3,
                 score_threshold=0.99,
                 with_payload=True,
             )
-        except Exception:
+            for r in batch
+        ]
+        try:
+            responses = qdrant.query_batch_points(
+                collection_name="DocumentChunk_text",
+                requests=requests,
+                timeout=30,
+            )
+        except Exception as e:
+            print(f"  Batch query error at {batch_start}: {e}")
             continue
-        if i % 25 == 0:
-            print(f"  Duplicate scan: {i}/100")
-        for match in results.points:
-            if str(match.id) != r["id"]:
-                pair = tuple(sorted([r["id"], str(match.id)]))
-                if pair not in seen:
-                    seen.add(pair)
-                    duplicates.append({
-                        "id": r["id"], "type": "near_duplicate",
-                        "severity": "high" if match.score > 0.999 else "medium",
-                        "detail": f"sim={match.score:.4f} with {match.id}",
-                        "data": r["data"],
-                    })
+
+        print(f"  Duplicate scan: {batch_start + len(batch)}/{len(scan_records)}")
+
+        for r, response in zip(batch, responses):
+            for match in response.points:
+                if str(match.id) != r["id"]:
+                    pair = tuple(sorted([r["id"], str(match.id)]))
+                    if pair not in seen:
+                        seen.add(pair)
+                        duplicates.append({
+                            "id": r["id"], "type": "near_duplicate",
+                            "severity": "high" if match.score > 0.999 else "medium",
+                            "detail": f"sim={match.score:.4f} with {match.id}",
+                            "data": r["data"],
+                        })
+
     return duplicates
 
 
