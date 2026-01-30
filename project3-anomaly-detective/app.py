@@ -119,14 +119,19 @@ def detect_duplicates_via_recommend(records):
     """Use Qdrant Recommend API to find near-duplicate vectors."""
     duplicates = []
     seen = set()
-    for r in records[:500]:
-        results = qdrant.query_points(
-            collection_name="DocumentChunk_text",
-            query=r["id"],
-            limit=3,
-            score_threshold=0.99,
-            with_payload=True,
-        )
+    for i, r in enumerate(records[:100]):  # Limit to 100 for Qdrant Cloud timeouts
+        try:
+            results = qdrant.query_points(
+                collection_name="DocumentChunk_text",
+                query=r["id"],
+                limit=3,
+                score_threshold=0.99,
+                with_payload=True,
+            )
+        except Exception:
+            continue
+        if i % 25 == 0:
+            print(f"  Duplicate scan: {i}/100")
         for match in results.points:
             if str(match.id) != r["id"]:
                 pair = tuple(sorted([r["id"], str(match.id)]))
