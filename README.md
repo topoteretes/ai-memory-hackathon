@@ -35,8 +35,10 @@ Create a free cluster at [cloud.qdrant.io](https://cloud.qdrant.io), then downlo
 
 > **Already have the files locally?** If you have `snapshots/` and `models/` directories, skip the download steps and go straight to restoring/running.
 
+**Direct download:** [cognee-vectors-snapshot.tar.gz](https://cognee-data.nyc3.digitaloceanspaces.com/cognee-vectors-snapshot.tar.gz) (91 MB)
+
 ```bash
-# Download snapshots (from DO Spaces or S3 fallback)
+# Download snapshots (from DO Spaces)
 uv run python download-from-spaces.py
 
 # Add your credentials
