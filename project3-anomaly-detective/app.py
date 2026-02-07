@@ -81,7 +81,7 @@ def load_vectors_and_data(collection: str):
             data = parse_record(p.payload)
             if data:
                 records.append({
-                    "id": str(p.id), "vector": np.array(p.vector),
+                    "id": str(p.id), "vector": np.array(p.vector["text"]),
                     "data": data, "payload": p.payload,
                 })
         if offset is None:
@@ -142,6 +142,7 @@ def detect_duplicates_via_recommend(records):
         requests = [
             QueryRequest(
                 query=r["id"],
+                using="text",
                 limit=3,
                 score_threshold=0.99,
                 with_payload=True,
