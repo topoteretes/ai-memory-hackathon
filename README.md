@@ -153,7 +153,7 @@ Example results comparing LLM and SLM outputs can be found in `responses.txt`.
 
 ## Example projects
 
-Each project is self-contained with its own `pyproject.toml` and dependencies:
+Hackathon participants should feel free to build off of these if they wish, or to do something totally different. The three example projects in project1, project2, and project3 directories are each self-contained with their own`pyproject.toml` and dependencies:
 ```bash
 cd project1-procurement-search  # or project2 or project3
 uv sync
