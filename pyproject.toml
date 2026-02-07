@@ -1,13 +1,16 @@
 [project]
-name = "cognee-qdrant-starter"
+name = "ai-memory-hackathon"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
+    "cognee==0.4.1",
+    "transformers",
+    "qdrant-client",
+    "cognee-community-vector-adapter-qdrant",
+    "python-dotenv",
     "requests>=2.31",
-    "python-dotenv>=1.0",
     "boto3>=1.35",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.backends"
+[tool.uv]
+package = false

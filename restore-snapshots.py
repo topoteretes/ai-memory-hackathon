@@ -21,11 +21,22 @@ SNAPSHOTS_DIR = os.path.join(os.path.dirname(__file__), "snapshots")
 headers = {"api-key": QDRANT_API_KEY}
 
 
+COLLECTION_NAMES = [
+    "DocumentChunk_text",
+    "EdgeType_relationship_name",
+    "Entity_name",
+    "EntityType_name",
+    "TextDocument_name",
+    "TextSummary_text",
+]
+
+
 def get_collection_name(filename: str) -> str:
     """Extract collection name from snapshot filename."""
-    # Format: CollectionName-shardid-date.snapshot
-    parts = filename.rsplit("-", 4)
-    return parts[0]
+    for name in COLLECTION_NAMES:
+        if filename.startswith(name):
+            return name
+    return filename.removesuffix(".snapshot")
 
 
 def restore_snapshot(filepath: str):
@@ -75,7 +86,7 @@ def main():
         r = requests.get(f"{QDRANT_URL}/collections/{collection}", headers=headers)
         if r.status_code == 200:
             info = r.json()["result"]
-            print(f"  {collection}: {info['points_count']} points, {info['vectors_count']} vectors")
+            print(f"  {collection}: {info['points_count']} points")
         else:
             print(f"  {collection}: ERROR {r.status_code}")
 

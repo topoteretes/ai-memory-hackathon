@@ -8,7 +8,9 @@ __MACOSX/
 cognee-minihack/
 cognee-minihack.zip
 models/
+models.zip
 models-*.zip
+cognee_export/
 snapshots/
 *.snapshot
 
