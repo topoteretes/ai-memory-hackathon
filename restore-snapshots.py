@@ -75,7 +75,7 @@ def main():
         r = requests.get(f"{QDRANT_URL}/collections/{collection}", headers=headers)
         if r.status_code == 200:
             info = r.json()["result"]
-            print(f"  {collection}: {info['points_count']} points, {info.get('vectors_count', info.get('indexed_vectors_count', 'N/A'))} vectors")
+            print(f"  {collection}: {info['points_count']} points")
         else:
             print(f"  {collection}: ERROR {r.status_code}")
 
