@@ -1,323 +1,191 @@
 # Setting Up Question Answering with Qdrant and a Local Model
 
-This guide explains how to set up question answering using the cognee-distillabs local model with Ollama.
+## Quick Start
 
-## Prerequisites
+**We will set up**:
+- Ollama with two local models (embedding and LLM)
+- A Python virtual environment with pinned dependencies
+- A Cognee knowledge graph imported from prebuilt data
+- A local Qdrant vector store loaded with snapshot data
+- The question answering script (`solution_q_and_a.py`)
 
-### 1. Install Ollama
+**This will allow you to**:
+- Access ingested data from invoice and transaction documents
+- Retrieve structured context from a knowledge graph for LLM queries
+- Ask natural-language questions about the data using a local language model
+- Build tools, agents, or workflows on top of the Q&A pipeline
 
-Install Ollama from [ollama.com/](https://ollama.com/) or using your package manager.
+**Before installation**:
+- copy `models/` from the USB to your working directory (or download via `uv run python download-from-spaces.py`)
+- verify the three subdirectories contain Modelfile and a *.gguf each
 
-### 2. Register Ollama Model
-
-First, copy over the models directory from the USB stick into the hackathon directory. Then, navigate to the models directory containing the downloaded model files and the register the models with:
-
+**Project installation**:
 ```bash
-cd models
+# Ollama installation
+brew install ollama
+ollama serve
 
+# Ollama model registration
+cd models
 ollama create nomic-embed-text -f nomic-embed-text/Modelfile
 ollama create cognee-distillabs-model-gguf-quantized -f cognee-distillabs-model-gguf-quantized/Modelfile
-
 cd ..
-```
 
-### 3. Graph Setup
-
-You will need a virtual environment (venv) configured for this, so if you didn't create one beforehand, here is how you can do it:
-
-```bash
-# You can easily do it with the help of uv
+# Initialize python environment, install dependencies
 uv venv
-
-# In case you don't have uv installed, you can do the following command
-python -m venv venv
-
-# After this, you can activate the environment
 source .venv/bin/activate
-```
+uv sync
 
-In order to import the generated graph into your venv memory, you should run the following script:
-
-```bash
-uv pip install cognee transformers
+# Graph setup
 python setup.py
-```
 
-or if you do not like uv (you should like it), use 
+# Qdrant (local Docker)
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qdrant
 
-```bash
-python -m pip install cognee transformers
-python setup.py
-```
-
-### 4. Qdrant (Vector) Setup
-
-First, install the Qdrant adapter in your venv:
-
-```bash
-uv pip install qdrant-client cognee-community-vector-adapter-qdrant
-```
-
-Then, clone the [cognee-qdrant-starter repo](https://github.com/thierrypdamiba/cognee-qdrant-starter) into your hackathon directory. Now choose **one** of the two options below.
-
----
-
-#### Option A: Qdrant Cloud (Hosted)
-
-Best for: deployment, sharing with teammates, no Docker needed.
-
-**A1. Create a free Qdrant Cloud cluster**
-
-1. Go to [https://cloud.qdrant.io](https://cloud.qdrant.io) and sign up
-2. Create a new cluster (free tier is fine)
-3. Copy your Cluster URL and API Key
-
-**A2. Configure credentials, download, and restore**
-
-```bash
-cd cognee-qdrant-starter
-
-# Create your .env with Qdrant credentials
-cp .env.example .env
-# Edit .env — fill in QDRANT_URL and QDRANT_API_KEY with your Cloud values
-
-# Download the 6 snapshot files (~91 MB total)
+# Configure for use locally, retrieve data, restore to database
+cp .env.example.local .env
 uv run python download-from-spaces.py
-
-# Upload them to your Qdrant Cloud cluster
 uv run python restore-snapshots.py
 
-cd ..
-```
-
-After this, your Qdrant Cloud cluster contains 14,837 vectors and `solution_q_and_a.py` will automatically read your credentials from this `.env`.
-
----
-
-#### Option B: Qdrant Local (Docker)
-
-Best for: offline development, no cloud account needed, full control.
-
-*B1. Start a local Qdrant instance*
-
-```bash
-docker run -d --name qdrant \
-  -p 6333:6333 -p 6334:6334 \
-  -v qdrant_storage:/qdrant/storage \
-  qdrant/qdrant
-```
-
-This gives you Qdrant running at `http://localhost:6333`. No API key needed for local.
-
-*B2. Configure credentials, download, and restore*
-
-```bash
-cd cognee-qdrant-starter
-cp .env.example .env
-```
-
-Edit `.env` — set the URL to your local instance:
-
-```
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=
-```
-
-```bash
-uv run python download-from-spaces.py   # download snapshot files
-uv run python restore-snapshots.py       # restore to local Qdrant
-
-cd ..
-```
-
-After this, your local Qdrant instance contains 14,837 vectors and `solution_q_and_a.py` will automatically read your credentials from this `.env`.
-
-### 5. Running the Script
-
-Once configured, run the question answering script:
-
-```bash
+# Run Q and A example
 python solution_q_and_a.py
 ```
 
-### 6. Example Results
+**Pitfalls to avoid**:
+- building the venv in `models/` instead of the project root
+- having a stale venv activated
+
+**Next steps**:
+- look around the code
+- play with the queries
+- check out the databases
+- build something
+
+
+## Qdrant Cloud (alternative to local Docker)
+
+If you prefer hosted Qdrant over local Docker, set up a free cluster at [cloud.qdrant.io](https://cloud.qdrant.io) and use `.env.example` instead of `.env.example.local`:
+```bash
+cp .env.example .env
+# Edit .env -- fill in QDRANT_URL and QDRANT_API_KEY with your Cloud values
+uv run python download-from-spaces.py
+uv run python restore-snapshots.py
+```
+
+After restore, your cluster contains 14,837 vectors across 6 collections.
+
+
+## Example results
 
 Example results comparing LLM and SLM outputs can be found in `responses.txt`.
 
 
+## Example projects using Qdrant
 
-## Appendix 
+**Project 1: Procurement Semantic Search** (port 7777) -- semantic search across all procurement data with interactive UI. Qdrant features include Query API, Prefetch + RRF Fusion, Group API, Discovery API, Recommend API, payload indexing, and filtered search.
 
-### Appendix A: Example Projects using Qdrant
+**Project 2: Spend Analytics Dashboard** (port 5553) -- interactive analytics dashboard with Chart.js visualizations and semantic search. Uses Scroll API for bulk extraction, Query API, Group API, and payload indexing.
 
-#### Project 1: Procurement Semantic Search (port 7777)
+**Project 3: Anomaly Detective** (port 6971) -- automated anomaly detection using vector analysis and Qdrant's Batch Query API. Detection methods include amount outliers (z-score), embedding outliers (centroid distance), near-duplicates (similarity > 0.99), and vendor variance.
 
-Semantic search across all procurement data with interactive UI.
-
-**Qdrant features:** Query API, Prefetch + RRF Fusion, Group API, Discovery API, Recommend API, payload indexing, filtered search
-
-**Endpoints:** `/search`, `/search/grouped`, `/discover`, `/recommend`, `/filter`, `/ask` (RAG Q&A), `/cognee-search`, `/add-knowledge`, `/collections`
-
-#### Project 2: Spend Analytics Dashboard (port 5553)
-
-Interactive analytics dashboard with Chart.js visualizations and semantic search.
-
-**Qdrant features:** Scroll API (bulk extraction), Query API, Group API, payload indexing
-
-**Endpoints:** `/api/analytics`, `/api/search`, `/api/search/grouped`, `/api/insights` (LLM analysis)
-
-#### Project 3: Anomaly Detective (port 6971)
-
-Automated anomaly detection using vector analysis and Qdrant's batch API.
-
-**Qdrant features:** Batch Query API (50 recommend queries/request), Recommend API, Scroll API with vectors, payload indexing
-
-**Detection methods:** amount outliers (z-score), embedding outliers (centroid distance), near-duplicates (similarity > 0.99), vendor variance
-
-**Endpoints:** `/api/anomalies`, `/api/search`, `/api/investigate/{point_id}`, `/api/explain/{point_id}` (LLM explanation)
-
-
-### Appendix B: DigitalOcean Deployment
-
-#### Deployment
-
-Two modes: **local** (dev with GGUF models) and **remote** (deployed with API-based inference).
-
-### Local dev (Distil Labs GGUF)
-
+Each project is self-contained and can be run with:
 ```bash
-# .env: LLM_MODE=local, EMBED_MODE=local (defaults)
+cd project1-procurement-search  # or project2 or project3
 uv run python app.py
 ```
 
-Runs the Distil Labs SLM locally via llama-cpp-python. Requires 4-8GB RAM.
 
-### Deploy to DigitalOcean App Platform
+## Adding your own data
 
+The starter data was built using cognee's ECL (Extract, Cognify, Load) pipeline:
 ```bash
-# 1. Upload data to DO Spaces
-uv run python upload-to-spaces.py
-
-# 2. Set remote mode in .env
-#    LLM_MODE=remote
-#    LLM_API_URL=<distil-labs-hosted-endpoint>
-#    EMBED_MODE=remote
-#    EMBED_API_URL=<embedding-api-endpoint>
-
-# 3. Deploy
-doctl apps create --spec .do/app.yaml
-```
-
-Or use Docker locally:
-
-```bash
-docker compose up
-```
-
-The deployed version calls the Distil Labs hosted API (or any OpenAI-compatible endpoint) instead of loading GGUF files. This keeps the container small and runs on a $6/mo App Platform instance.
-
-**Free credits:** New DigitalOcean accounts get [$200 in free credits](https://www.digitalocean.com/try/free-trial) for 60 days.
-
-#### Environment variables
-
-
-| Variable          | Default           | Description                                                     |
-| ----------------- | ----------------- | --------------------------------------------------------------- |
-| `QDRANT_URL`      | -                 | Qdrant Cloud cluster URL                                        |
-| `QDRANT_API_KEY`  | -                 | Qdrant Cloud API key                                            |
-| `LLM_MODE`        | `local`           | `local` (GGUF) or `remote` (API)                                |
-| `LLM_API_URL`     | -                 | OpenAI-compatible chat completions endpoint                     |
-| `LLM_API_KEY`     | -                 | API key for remote LLM                                          |
-| `LLM_MODEL_NAME`  | `distil-labs-slm` | Model name for remote LLM                                       |
-| `EMBED_MODE`      | `local`           | `local` (GGUF) or `remote` (API)                                |
-| `EMBED_API_URL`   | -                 | OpenAI-compatible embeddings endpoint                           |
-| `EMBED_API_KEY`   | -                 | API key for remote embeddings                                   |
-| `SPACES_ENDPOINT` | -                 | DO Spaces endpoint (e.g. `https://nyc3.digitaloceanspaces.com`) |
-| `SPACES_BUCKET`   | -                 | DO Spaces bucket name                                           |
-
-
-
-### Appendix C: Adding your own data
-
-The starter data was built using cognee's ECL (Extract, Cognify, Load) pipeline. You can add your own data:
-
-#### Quick start
-
-```bash
-cd cognee-qdrant-starter/cognee-pipeline
+cd cognee-pipeline
 cp .env.example .env
 # Edit .env: add Qdrant credentials + LLM provider
 uv sync
 uv run python ingest.py
 ```
 
-#### Add your own data
-
+Programmatic usage:
 ```python
 import cognee
 from cognee.api.v1.search import SearchType
 
-# 1. Add documents (text, files, URLs)
 await cognee.add("Your document text here...")
-await cognee.add("/path/to/document.pdf")
-await cognee.add(["doc1.txt", "doc2.csv", "doc3.pdf"])
-
-# 2. Build knowledge graph (extracts entities, relationships, summaries)
 await cognee.cognify()
-
-# 3. Search with graph context
 results = await cognee.search(
     query_text="What vendors supply IT equipment?",
-    query_type=SearchType.CHUNKS,  # or SUMMARIES, GRAPH_COMPLETION, RAG_COMPLETION
+    query_type=SearchType.CHUNKS,
 )
 ```
 
-#### Supported input types
-
-- Plain text strings
-- PDF, DOCX, TXT, CSV files
-- URLs (web pages)
-- Directories of files
-
-See [cognee docs](https://docs.cognee.ai) for full pipeline options.
+Supported input types: plain text strings, PDF, DOCX, TXT, CSV files, URLs, and directories of files. See [cognee docs](https://docs.cognee.ai) for full pipeline options.
 
 
-### Appendix D: Using base QWEN3 model with ollama
+## Using Qwen3 as an alternative model
 
-To use the base QWEN3 model, Navigate to the models directory containing the downloaded model files and the register the models with:
-
+Register the Qwen3 model with Ollama:
 ```bash
 cd models
-
 ollama create Qwen3-4B-Q4_K_M -f Qwen3-4B-Q4_K_M/Modelfile
+cd ..
 ```
 
-Once its loaded, you can use it using standard [OpenAI interface](https://ollama.com/blog/openai-compatibility). For example from python as
+Access it via the standard OpenAI-compatible interface at `http://localhost:11434/v1` with model name `Qwen3-4B-Q4_K_M`.
 
-```python
-from openai import OpenAI
 
-client = OpenAI(
-    base_url = 'http://localhost:11434/v1',
-    api_key='ollama', # required, but unused
-)
+## DigitalOcean deployment
 
-response = client.chat.completions.create(
-  model="Qwen3-4B-Q4_K_M",
-  messages=[
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Who won the world series in 2020?"},
-    {"role": "assistant", "content": "The LA Dodgers won in 2020."},
-    {"role": "user", "content": "Where was it played?"}
-  ]
-)
-print(response.choices[0].message.content)
+Two modes are available: **local** (GGUF models, default) and **remote** (API-based inference).
+
+**Local dev** runs the Distil Labs SLM via llama-cpp-python (requires 4-8GB RAM):
+```bash
+# .env: LLM_MODE=local, EMBED_MODE=local (defaults)
+uv run python app.py
 ```
+
+**Remote deployment** to DigitalOcean App Platform:
+```bash
+uv run python upload-to-spaces.py
+# Set LLM_MODE=remote and EMBED_MODE=remote in .env
+doctl apps create --spec .do/app.yaml
+```
+
+Or run remotely via Docker:
+```bash
+docker compose up
+```
+
+**Environment variables**:
+
+| Variable          | Default           | Description                                 |
+| ----------------- | ----------------- | ------------------------------------------- |
+| `QDRANT_URL`      | -                 | Qdrant Cloud cluster URL                    |
+| `QDRANT_API_KEY`  | -                 | Qdrant Cloud API key                        |
+| `LLM_MODE`        | `local`           | `local` (GGUF) or `remote` (API)            |
+| `LLM_API_URL`     | -                 | OpenAI-compatible chat completions endpoint |
+| `LLM_API_KEY`     | -                 | API key for remote LLM                      |
+| `LLM_MODEL_NAME`  | `distil-labs-slm` | Model name for remote LLM                   |
+| `EMBED_MODE`      | `local`           | `local` (GGUF) or `remote` (API)            |
+| `EMBED_API_URL`   | -                 | OpenAI-compatible embeddings endpoint       |
+| `EMBED_API_KEY`   | -                 | API key for remote embeddings               |
+| `SPACES_ENDPOINT` | -                 | DO Spaces endpoint                          |
+| `SPACES_BUCKET`   | -                 | DO Spaces bucket name                       |
+
 
 ## Prerequisites
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- [cognee](https://github.com/topoteretes/cognee) (knowledge graph memory)
-- [Qdrant Cloud](https://cloud.qdrant.io) cluster (free tier available)
-- [DigitalOcean](https://www.digitalocean.com/) account ($200 free credits available)
+- [Ollama](https://ollama.com/)
+- Docker (for local Qdrant)
+- [cognee](https://github.com/topoteretes/cognee)
+
+
+## Useful commands
+
+Turn off and remove Qdrant if necessary for recreating:
+```bash
+docker stop qdrant && docker rm qdrant
+docker volume rm qdrant_storage
+```
